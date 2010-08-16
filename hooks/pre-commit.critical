@@ -1,0 +1,43 @@
+#!/bin/bash
+
+complain() {
+    echo $@ > /dev/stderr
+}
+
+die() {
+    echo $@ > /dev/stderr
+    exit 10
+}
+
+# perltidy 
+find lib -type f -exec perltidy -pro=/etc/perltidyrc {} \;
+find lib -type f -name '*.bak' -exec rm -f {} \;
+
+# Perl::Critic
+for file in `find lib -type f`
+do
+    perlcritic --profile /etc/perlcriticrc $file
+    if [[ $? != 0 ]]; then
+        die "Perl::Critic violation detected in $file"
+    fi
+done
+
+# make sure critical tests (t/00*.t) pass
+test_dir="$(dirname $0)/../../t"
+if [[ ! -d $test_dir ]]; then
+    complain "Test dir $test_dir does not exist (or is not a directory)."
+elif [[ $(echo $test_dir/*.t) == "$test_dir/*.t" ]]; then
+    complain "There are no test (.t) files $test_dir. Please write some tests!"
+    # ^ This code depends on the fact that a glob pattern that matches no files,
+    # e.g. ../../t/*, will expand to the pattern itself--a literal '../../t/*'.)
+else
+    for script in t/00*.t
+    do
+        perl -Ilib -T $script > /dev/null
+        if [[ $? != 0 ]]; then
+            die 'Perl test suite failed'
+        fi
+    done
+fi
+
+

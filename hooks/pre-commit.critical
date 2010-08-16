@@ -10,13 +10,20 @@ die() {
 }
 
 # perltidy 
-find lib -type f -exec perltidy -pro=/etc/perltidyrc {} \;
+for file in `git status|grep .pm|awk '{print $3}'`
+do
+    echo "perltidy $file"
+    perltidy -pro=.perltidyrc $file
+    if [[ $? != 0 ]]; then
+        die "Perltidy error in file: $file"
+    fi
+done
 find lib -type f -name '*.bak' -exec rm -f {} \;
 
 # Perl::Critic
-for file in `find lib -type f`
+for file in `git status|grep .pm|awk '{print $3}'`
 do
-    perlcritic --profile /etc/perlcriticrc $file
+    perlcritic --profile .perlcriticrc $file
     if [[ $? != 0 ]]; then
         die "Perl::Critic violation detected in $file"
     fi
@@ -31,9 +38,9 @@ elif [[ $(echo $test_dir/*.t) == "$test_dir/*.t" ]]; then
     # ^ This code depends on the fact that a glob pattern that matches no files,
     # e.g. ../../t/*, will expand to the pattern itself--a literal '../../t/*'.)
 else
-    for script in t/00*.t
+    for script in `find t -type f -name '00*.t'`
     do
-        perl -Ilib -T $script > /dev/null
+        perl -Ilib $script > /dev/null
         if [[ $? != 0 ]]; then
             die 'Perl test suite failed'
         fi

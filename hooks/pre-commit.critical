@@ -15,23 +15,23 @@
 
 # This filter process any Perl (.pm) file added to the commit and
 # process them with perltidy, using the local .perltidyrc file.
-USE_PERLTIDY_FILTER=1
+USE_PERLTIDY_FILTER=${USE_PERLTIDY_FILTER:-1}
 
 # This filter process any Perl (.pm) file added to the commit and
 # process them with perlcritic, using the local .perlcriticrc file.
 # If any violation is encountered, the commit is aborted.
-USE_PERLCRITIC_FILTER=1
+USE_PERLCRITIC_FILTER=${USE_PERLCRITIC_FILTER:-1}
 
 # This filter runs all the tests named 00*.t and aborts the commit if
 # one of them fails.
-USE_CRITICAL_TESTS_FILTER=1
+USE_CRITICAL_TESTS_FILTER=${USE_CRITICAL_TESTS_FILTER:-1}
 
 # This filter saves the last cover score of the test suite and make
 # sure it won't get lower. If a commit introduces a lower score, the
 # commit is aborted. This filter is ran only when Perl file is added
 # to the commit and depends on Devel::Cover (this may be versy slow if
 # you have a long test suite, use with caution).
-USE_COVER_FREAK_FILTER=0
+USE_COVER_FREAK_FILTER=${USE_COVER_FREAK_FILTER:-0}
 
 #####################################################
 

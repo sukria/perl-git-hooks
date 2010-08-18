@@ -1,5 +1,40 @@
 #!/bin/bash
 
+#####################################################
+#
+# Perl pre-commit hook script for Git
+#
+#			"You gonna like that strictness!"
+#
+# Author: Alexis Sukrieh
+# Licence: GPL
+#
+#####################################################
+
+# Configuration
+
+# This filter process any Perl (.pm) file added to the commit and
+# process them with perltidy, using the local .perltidyrc file.
+USE_PERLTIDY_FILTER=1
+
+# This filter process any Perl (.pm) file added to the commit and
+# process them with perlcritic, using the local .perlcriticrc file.
+# If any violation is encountered, the commit is aborted.
+USE_PERLCRITIC_FILTER=1
+
+# This filter runs all the tests named 00*.t and aborts the commit if
+# one of them fails.
+USE_CRITICAL_TESTS_FILTER=1
+
+# This filter saves the last cover score of the test suite and make
+# sure it won't get lower. If a commit introduces a lower score, the
+# commit is aborted. This filter is ran only when Perl file is added
+# to the commit and depends on Devel::Cover (this may be versy slow if
+# you have a long test suite, use with caution).
+USE_COVER_FREAK_FILTER=0
+
+#####################################################
+
 complain() {
     echo $@ > /dev/stderr
 }
@@ -10,41 +45,83 @@ die() {
 }
 
 # perltidy 
-for file in `git status|grep .pm|awk '{print $3}'`
-do
-    echo "perltidy $file"
-    perltidy -pro=.perltidyrc $file
-    if [[ $? != 0 ]]; then
-        die "Perltidy error in file: $file"
-    fi
-done
-find lib -type f -name '*.bak' -exec rm -f {} \;
-
-# Perl::Critic
-for file in `git status|grep .pm|awk '{print $3}'`
-do
-    perlcritic --profile .perlcriticrc $file
-    if [[ $? != 0 ]]; then
-        die "Perl::Critic violation detected in $file"
-    fi
-done
-
-# make sure critical tests (t/00*.t) pass
-test_dir="$(dirname $0)/../../t"
-if [[ ! -d $test_dir ]]; then
-    complain "Test dir $test_dir does not exist (or is not a directory)."
-elif [[ $(echo $test_dir/*.t) == "$test_dir/*.t" ]]; then
-    complain "There are no test (.t) files $test_dir. Please write some tests!"
-    # ^ This code depends on the fact that a glob pattern that matches no files,
-    # e.g. ../../t/*, will expand to the pattern itself--a literal '../../t/*'.)
-else
-    for script in `find t -type f -name '00*.t'`
-    do
-        perl -Ilib $script > /dev/null
-        if [[ $? != 0 ]]; then
-            die 'Perl test suite failed'
-        fi
-    done
+if [[ "$USE_PERLTIDY_FILTER" == "1" ]]; then
+	for file in `git status|grep .pm|awk '{print $NF}'`
+	do
+		if [[ ! `echo $file | grep '^t'` ]]; then
+			echo "perltidy $file"
+			perltidy -pro=.perltidyrc $file
+			if [[ $? != 0 ]]; then
+				die "Perltidy error in file: $file"
+			fi
+		fi
+	done
+	find lib -type f -name '*.bak' -exec rm -f {} \;
+	find t -type f -name '*.bak' -exec rm -f {} \;
 fi
 
+# Perl::Critic
+if [[ "$USE_PERLCRITIC_FILTER" == "1" ]]; then
+	for file in `git status|grep .pm|awk '{print $NF}'`
+	do
+		if [[ ! `echo $file | grep '^t'` ]]; then
+			perlcritic --profile .perlcriticrc $file
+			if [[ $? != 0 ]]; then
+				die "Perl::Critic violation detected in $file"
+			fi
+		fi
+	done
+fi
+
+# if everything passed and a Perl file is touched, 
+# run the test suite with cover statistics,
+if [[ "$USE_COVER_FREAK_FILTER" == "1" ]]; then
+	if [[ `git status | grep '.pm' | awk '{print $NF}' | grep -v '^t'` ]]; then
+		
+		echo "Perl modules have been touched, computing cover stats..."
+
+		# get the total score of the test coverage
+		current_score=$(cover -test \
+			-coverage statement \
+			-coverage branch \
+			-coverage subroutine 2>/dev/null \
+			| grep 'Total' | awk '{print $NF}')
+
+		if [[ -e .last_cover_stats ]]; then
+			# make sure the cover stats isnt lower than before
+			last_score=$(cat .last_cover_stats)
+			score_is_ok=$(perl -le "print (($current_score >= $last_score) ? 1 : 0)")
+			if [[ "x$score_is_ok" == "x0" ]]; then
+				echo "THIS COMMIT IS SHITTY! (cover was $last_score, would become $current_score)"
+				exit 10
+			else
+				echo "Well done, the cover score is OK ($current_score)"
+			fi
+		else
+			# first time, save the score
+			echo "Saving first cover score: $current_score"
+			echo "$current_score" > .last_cover_stats
+		fi
+	fi
+fi
+
+# make sure critical tests (t/00*.t) pass
+if [[ "$USE_CRITICAL_TESTS_FILTER" == "1" ]]; then
+	test_dir="$(dirname $0)/../../t"
+	if [[ ! -d $test_dir ]]; then
+		complain "Test dir $test_dir does not exist (or is not a directory)."
+	elif [[ $(echo $test_dir/*.t) == "$test_dir/*.t" ]]; then
+		complain "There are no test (.t) files $test_dir. Please write some tests!"
+		# ^ This code depends on the fact that a glob pattern that matches no files,
+		# e.g. ../../t/*, will expand to the pattern itself--a literal '../../t/*'.)
+	else
+		for script in `find t -type f -name '00*.t'`
+		do
+			perl -Ilib $script > /dev/null
+			if [[ $? != 0 ]]; then
+				die 'Perl test suite failed'
+			fi
+		done
+	fi
+fi
 
